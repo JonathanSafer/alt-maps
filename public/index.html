@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Starlink Map">
+  <meta name="theme-color" content="#070b10">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="description" content="Show your Starlink dish location on a map from your iPhone.">
+  <title>Starlink Map</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="map-ui" class="hidden">
+    <div class="topbar">
+      <div class="brand-pill">
+        <img src="icons/apple-touch-icon.png" alt="">
+        <span class="name">Starlink Map</span>
+        <span id="mode-tag" class="mode-tag hidden"></span>
+      </div>
+      <div id="banner" class="banner" role="status"></div>
+    </div>
+
+    <div class="sheet">
+      <div class="fabs">
+        <button type="button" class="fab" id="btn-trail" aria-label="Toggle breadcrumb trail" title="Trail">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16c4-8 6 0 10-6 3 4 4 2 6 2"/><circle cx="20" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button type="button" class="fab" id="btn-recenter" aria-label="Recenter on dish" title="Recenter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+        </button>
+      </div>
+      <div class="sheet-card">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="coords">
+          <div class="coord"><label>Latitude</label><div class="val" id="lat">—</div></div>
+          <div class="coord"><label>Longitude</label><div class="val" id="lon">—</div></div>
+          <div class="coord"><label>Altitude</label><div class="val" id="alt">—</div></div>
+          <div class="coord"><label>Source</label><div class="val" id="source">—</div></div>
+          <div class="coord wide"><label>Accuracy</label><div class="val" id="acc">—</div></div>
+        </div>
+        <div class="meta-row">
+          <span class="fresh" id="stamp">Waiting for a fix…</span>
+          <button type="button" class="btn ghost" id="btn-setup" style="min-height:36px;padding:6px 10px;font-size:13px">Setup</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn primary" id="btn-refresh-live">Refresh now</button>
+          <a class="btn primary hidden" id="btn-refresh-shortcut" href="shortcuts://run-shortcut?name=Starlink%20Map">Refresh</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="setup" class="setup">
+    <div class="setup-hero">
+      <img src="icons/icon-192.png" alt="Starlink Map">
+      <h1>Starlink Map</h1>
+      <p>See your dish’s location on a live map using just your iPhone and your Starlink. No extra computer.</p>
+    </div>
+
+    <div class="card">
+      <div class="kicker">Before you start</div>
+      <ol>
+        <li>Join your <strong style="color:var(--text)">Starlink Wi‑Fi</strong> on this iPhone.</li>
+        <li>In the Starlink app: <strong style="color:var(--text)">Settings → Advanced → Debug Data</strong>, turn on <strong style="color:var(--text)">Allow access on local network</strong> (under Starlink Location).</li>
+      </ol>
+      <p class="note">That toggle can be missing on some newer hardware, and as of May 2026 many residential plans no longer expose location on the local API. Some Priority plans reportedly still do. This page cannot check your plan.</p>
+    </div>
+
+    <div class="card">
+      <div class="kicker">Recommended</div>
+      <h2>Live map bookmark</h2>
+      <p>A normal website is not allowed to read the dish’s location (the dish blocks other sites with CORS). The official dish page is allowed. This bookmark injects the map into that page so Safari can poll the dish every 10 seconds.</p>
+      <ol>
+        <li>Tap <strong style="color:var(--text)">Copy bookmarklet</strong>.</li>
+        <li>In Safari, bookmark any page (Share → Add Bookmark). Then open Bookmarks, tap Edit, open that bookmark, and paste the copied text into the URL / Address field. Name it <strong style="color:var(--text)">Starlink Map</strong>.</li>
+        <li>Open the dish page, then tap that bookmark.</li>
+      </ol>
+      <div class="actions">
+        <button type="button" class="btn primary" id="btn-copy-bookmarklet">Copy bookmarklet</button>
+        <button type="button" class="btn" id="btn-open-dish">Open dish page</button>
+      </div>
+      <textarea id="bookmarklet-text" class="code hidden" rows="3" readonly></textarea>
+      <p class="note">The copied bookmark loads <code>inject.js</code> from this page’s own address, including a subpath such as <code>/alt-maps/</code>. Open the dish page <a href="http://192.168.100.1">http://192.168.100.1</a> (or <a href="http://dishy.starlink.com">http://dishy.starlink.com</a> on some Starlink routers), then tap the bookmark. After the map appears you can also use Share → Add to Home Screen, but the icon will reopen the plain dish page — tap the bookmark again to bring the map back.</p>
+    </div>
+
+    <div class="card">
+      <div class="kicker alt">Home Screen</div>
+      <h2>iOS Shortcut (one-tap snapshot)</h2>
+      <p>Shortcuts can call the dish directly — they are not limited by Safari’s CORS rules. This gives you a location snapshot and opens this map. It is not a continuously updating live track; use Refresh (or the bookmark method) for a new fix.</p>
+      <ol>
+        <li>Open the Shortcuts app and create a new shortcut named <strong style="color:var(--text)">Starlink Map</strong>.</li>
+        <li>Add <strong style="color:var(--text)">Base64 Decode</strong>. Set the text to this exact value (it is the <code>get_location</code> request):</li>
+      </ol>
+      <div class="code" id="grpc-b64">AAAAAAPKPwA=</div>
+      <ol start="3">
+        <li>Add <strong style="color:var(--text)">Get Contents of URL</strong>.
+          <ul>
+            <li>URL: <code>http://192.168.100.1:9201/SpaceX.API.Device.Device/Handle</code></li>
+            <li>Method: POST</li>
+            <li>Headers: <code>Content-Type</code> = <code>application/grpc-web+proto</code> and <code>X-Grpc-Web</code> = <code>1</code></li>
+            <li>Request Body: File — use the Base64 Decode result</li>
+          </ul>
+        </li>
+        <li>Add <strong style="color:var(--text)">Base64 Encode</strong> on the contents of the URL.</li>
+        <li>Add <strong style="color:var(--text)">Open URLs</strong>, set to this page plus <code>#grpc=</code> and the encoded result. The URL looks like:</li>
+      </ol>
+      <div class="code" id="shortcut-url-sample"></div>
+      <p class="note">Then use Share → Add to Home Screen on this page, or add the Shortcut itself to your Home Screen. If the name isn’t exactly “Starlink Map”, the in-map Refresh button won’t find it.</p>
+    </div>
+
+    <div class="card">
+      <div class="kicker">Preview</div>
+      <h2>Try the map in demo mode</h2>
+      <p>Shows a simulated moving location so you can see the UI without talking to a dish.</p>
+      <button type="button" class="btn primary" id="btn-demo" style="width:100%">Open demo map</button>
+    </div>
+
+    <div class="card">
+      <div class="kicker">Advanced</div>
+      <h2>Try talking to the dish from this page</h2>
+      <p>This is here so you can see what Safari does. On a typical public or HTTPS page it will fail, and that is expected. It may work only if this file is being served from the dish’s own origin.</p>
+      <button type="button" class="btn" id="btn-try" style="width:100%">Try connecting now</button>
+      <div id="try-result" class="note"></div>
+    </div>
+
+    <p class="fine-print">
+      Location is read from the dish over gRPC-web at <code>192.168.100.1:9201</code> (<code>SpaceX.API.Device.Device/Handle</code>, <code>get_location</code>).
+      Map tiles are from OpenStreetMap and need an internet connection.
+      This tool was not tested against a live dish from the machine that built it.
+      It does not bypass the dish’s cross-origin protections.
+    </p>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="app.js"></script>
+  <script>
+    StarlinkMap.start();
+  </script>
+</body>
+</html>
